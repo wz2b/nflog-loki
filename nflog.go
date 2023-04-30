@@ -2,26 +2,53 @@ package main
 
 import (
 	"context"
+	"flag"
 	"fmt"
 	"log"
 	"os"
+	"strconv"
+	"strings"
 	"time"
 
 	nflog "github.com/florianl/go-nflog/v2"
 )
 
-func main() {
-	//var count uint64 = 0
+type groupArray []uint16
 
-	//pusher, err := NewLokiPublisher()
-	//if err != nil {
-	//	panic(err)
-	//}
+var groups groupArray
+
+func (i *groupArray) String() string {
+	groupStrings := make([]string, len(*i))
+
+	for n, v := range *i {
+		groupStrings[n] = string(v)
+	}
+
+	return strings.Join(groupStrings, ",")
+}
+
+func (i *groupArray) Set(value string) error {
+	v, _ := strconv.ParseUint(value, 10, 16)
+	*i = append(*i, uint16(v))
+	return nil
+}
+
+func main() {
+	flag.Var(&groups, "g", "Some description for this param.")
+
+	flag.Parse()
+
+	if len(groups) == 0 {
+		groups = groupArray{2}
+	}
+
+	fmt.Printf("groups: %v\n", groups)
 
 	config := nflog.Config{
 		Group:    2,
 		Copymode: nflog.CopyPacket,
 		Bufsize:  128,
+		Flags:    nflog.FlagConntrack,
 	}
 
 	nf, err := nflog.Open(&config)

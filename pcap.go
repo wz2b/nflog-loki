@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/hex"
 	"fmt"
 	"github.com/florianl/go-nflog/v2"
 	"github.com/go-logfmt/logfmt"
@@ -47,6 +48,7 @@ func NewPcap(bufferPackets int, pusher *LokiPublisher) *Pcap {
 }
 
 func (p *Pcap) Run() {
+	var err error
 	for {
 		msg := <-p.input
 
@@ -58,22 +60,46 @@ func (p *Pcap) Run() {
 
 		payload := msg.Payload
 
-		err := p.ethernet.DecodeFromBytes(*payload, gopacket.NilDecodeFeedback)
-		if err != nil {
-			fmt.Printf("no ethernet: %v\n", err)
+		err = p.decoder.DecodeLayers(*payload, &p.foundLayerTypes)
+
+		//hwheader := msg.HwHeader
+		//fmt.Printf("HWHEADER (%d,%d): [ ", *msg.HwLen, *msg.HwProtocol)
+		//for j := 0; j < len(*hwheader); j = j + 1 {
+		//	fmt.Printf("%02X ", (*hwheader)[j])
+		//}
+		//fmt.Printf("]\n")
+
+		//if msg.Ct != nil {
+		//	fmt.Printf("has Ct %v\n", *msg.Ct)
+		//}
+		//
+		//if msg.CtInfo != nil {
+		//	ctinfo := *msg.CtInfo
+		//	fmt.Printf("has Ct %v\n", ctinfo)
+		//}
+
+		hwheader := msg.HwHeader
+		if hwheader != nil && len(*hwheader) == 14 {
+			// This looks like an ethernet header.  There are 6 bytes of
+			// destination address, followed by 6 bytes of source address,
+			// followed by the protocol identifier.
+
+			dst := (*hwheader)[0:5]
+			dstStr := hex.EncodeToString(dst)
+			src := (*hwheader)[6:11]
+			srcStr := hex.EncodeToString(src)
+
+			labels["dstaddr"] = model.LabelValue(dstStr)
+			labels["srcaddr"] = model.LabelValue(srcStr)
+
 		}
 
-		fmt.Printf("%+v\n", p.ethernet)
-
-		labels["srcMac"] = model.LabelValue(p.ethernet.SrcMAC.String())
-		labels["dstMac"] = model.LabelValue(p.ethernet.DstMAC.String())
-
-		err = p.decoder.DecodeLayers(*payload, &p.foundLayerTypes)
 		if err == nil {
 			for _, layerType := range p.foundLayerTypes {
 				switch layerType {
 
 				case layers.LayerTypeIPv4:
+
 					values = append(values, "src", p.ip4.SrcIP.String(),
 						"dst", p.ip4.DstIP.String())
 				case layers.LayerTypeUDP:
